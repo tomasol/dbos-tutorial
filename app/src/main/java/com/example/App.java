@@ -1,11 +1,13 @@
 package com.example;
 
-import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.slf4j.LoggerFactory;
-
 import dev.dbos.transact.DBOS;
 import dev.dbos.transact.StartWorkflowOptions;
 import dev.dbos.transact.config.DBOSConfig;
@@ -19,7 +21,7 @@ import ch.qos.logback.classic.Logger;
 interface Example {
     public void setProxy(Example proxy);
 
-    public void taskWorkflow(int i) throws Exception;
+    public int childWorkflow(int i) throws Exception;
 
     public void parentSerial() throws Exception;
 
@@ -39,13 +41,22 @@ class ExampleImpl implements Example {
         this.proxy = proxy;
     }
 
-    @Workflow(name = "task-workflow")
-    public void taskWorkflow(int i) throws Exception {
+    private int step(int i) throws Exception {
         System.out.printf("Task %d started%n", i);
         Thread.sleep(i * 300);
         System.out.printf("Task %d creating file%n", i);
-        java.nio.file.Files.createFile(java.nio.file.Path.of("file-" + i + ".txt"));
+        Path path = Path.of("file-" + i + ".txt");
+        // must be idempotent
+        Files.write(path, new byte[0]);
         System.out.printf("Task %d completed%n", i);
+        return i;
+    }
+
+    // This child workflow exists because there is no way to run steps directly in
+    // parallel.
+    @Workflow(name = "child-workflow")
+    public int childWorkflow(int i) throws Exception {
+        return DBOS.runStep(() -> step(i), "step " + i);
     }
 
     @Workflow(name = "parent-serial")
@@ -54,7 +65,7 @@ class ExampleImpl implements Example {
         for (int i = 0; i < 10; i++) {
             final int i2 = i;
             try {
-                DBOS.runStep(() -> taskWorkflow(i2), "step " + i);
+                DBOS.runStep(() -> step(i2), "step " + i);
             } catch (Exception e) {
                 System.out.println("caught " + e);
             }
@@ -65,18 +76,20 @@ class ExampleImpl implements Example {
     @Workflow(name = "parent-parallel")
     public void parentParallel() throws Exception {
         System.out.println("parent-parallel started");
-        List<WorkflowHandle<Void, Exception>> handles = new ArrayList<>();
+        ArrayList<Map.Entry<Integer, WorkflowHandle<Integer, Exception>>> handles = new ArrayList<>();
         for (int i = 0; i < 10; i++) {
             final int index = i;
-            WorkflowHandle<Void, Exception> handle = DBOS.startWorkflow(
-                    () -> this.proxy.taskWorkflow(index),
+            WorkflowHandle<Integer, Exception> handle = DBOS.startWorkflow(
+                    () -> this.proxy.childWorkflow(index),
                     new StartWorkflowOptions().withQueue(this.queue));
-            handles.add(handle);
+            handles.add(new AbstractMap.SimpleEntry<>(i, handle)); // Tuple (i, handle)
         }
-        System.out.println("parent-parallel submitted all child tasks");
-        for (WorkflowHandle<Void, Exception> handle : handles) {
+        System.out.println("parent-parallel submitted all child tasks: " + handles);
+        for (var handle : handles) {
+            System.out.printf("Awaiting task %d%n", handle.getKey());
             try {
-                handle.getResult();
+                int result = handle.getValue().getResult();
+                System.out.printf("Task succeeded %d=%d%n", handle.getKey(), result);
             } catch (Exception e) {
                 System.out.println("Task failed " + e);
             }

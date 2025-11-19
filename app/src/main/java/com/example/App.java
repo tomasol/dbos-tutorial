@@ -2,9 +2,10 @@ package com.example;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 
 import org.slf4j.LoggerFactory;
@@ -19,13 +20,12 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 
 interface Example {
-    public void setProxy(Example proxy);
+
+    public void serial() throws Exception;
 
     public int childWorkflow(int i) throws Exception;
 
-    public void parentSerial() throws Exception;
-
-    public void parentParallel() throws Exception;
+    public void parallelParent() throws Exception;
 }
 
 class ExampleImpl implements Example {
@@ -41,41 +41,43 @@ class ExampleImpl implements Example {
         this.proxy = proxy;
     }
 
-    private int step(int i) throws Exception {
-        System.out.printf("Task %d started%n", i);
-        Thread.sleep(i * 300);
-        System.out.printf("Task %d creating file%n", i);
-        Path path = Path.of("file-" + i + ".txt");
+    // Idempotent activity
+    private int step(int idx, int sleepMillis) throws Exception {
+        System.out.printf("Step %d started%n", idx);
+        Thread.sleep(sleepMillis);
+        System.out.printf("Step %d creating file%n", idx);
+        Path path = Path.of("file-" + idx + ".txt");
         // must be idempotent
         Files.write(path, new byte[0]);
-        System.out.printf("Task %d completed%n", i);
-        return i;
+        System.out.printf("Step %d completed%n", idx);
+        return idx;
+    }
+
+    @Workflow(name = "serial")
+    public void serial() throws Exception {
+        System.out.println("serial started");
+        for (int i = 0; i < 10; i++) {
+            System.out.println("Persistent sleep started");
+            DBOS.sleep(Duration.ofSeconds(1));
+            System.out.println("Persistent sleep finished");
+            final int i2 = i;
+            int result = DBOS.runStep(() -> step(i2, 200 * i2), "step " + i);
+            System.out.printf("Step succeeded %d==%d%n", i, result);
+
+        }
+        System.out.println("serial completed");
     }
 
     // This child workflow exists because there is no way to run steps directly in
     // parallel.
-    @Workflow(name = "child-workflow")
+    @Workflow(name = "parallel-child")
     public int childWorkflow(int i) throws Exception {
-        return DBOS.runStep(() -> step(i), "step " + i);
+        return DBOS.runStep(() -> step(i, 200 * i), "step " + i);
     }
 
-    @Workflow(name = "parent-serial")
-    public void parentSerial() throws Exception {
-        System.out.println("parent-serial started");
-        for (int i = 0; i < 10; i++) {
-            final int i2 = i;
-            try {
-                DBOS.runStep(() -> step(i2), "step " + i);
-            } catch (Exception e) {
-                System.out.println("caught " + e);
-            }
-        }
-        System.out.println("parent-serial completed");
-    }
-
-    @Workflow(name = "parent-parallel")
-    public void parentParallel() throws Exception {
-        System.out.println("parent-parallel started");
+    @Workflow(name = "parallel-parent")
+    public void parallelParent() throws Exception {
+        System.out.println("parallel-parent started");
         ArrayList<Map.Entry<Integer, WorkflowHandle<Integer, Exception>>> handles = new ArrayList<>();
         for (int i = 0; i < 10; i++) {
             final int index = i;
@@ -84,17 +86,17 @@ class ExampleImpl implements Example {
                     new StartWorkflowOptions().withQueue(this.queue));
             handles.add(new AbstractMap.SimpleEntry<>(i, handle)); // Tuple (i, handle)
         }
-        System.out.println("parent-parallel submitted all child tasks: " + handles);
+        System.out.println("parallel-parent submitted all parallel-child workflows: " + handles);
         for (var handle : handles) {
-            System.out.printf("Awaiting task %d%n", handle.getKey());
+            System.out.printf("Awaiting parallel-child workflows %d%n", handle.getKey());
             try {
                 int result = handle.getValue().getResult();
-                System.out.printf("Task succeeded %d=%d%n", handle.getKey(), result);
+                System.out.printf("parallel-child succeeded %d==%d%n", handle.getKey(), result);
             } catch (Exception e) {
-                System.out.println("Task failed " + e);
+                System.out.println("parallel-child failed " + e);
             }
         }
-        System.out.println("parent-parallel completed");
+        System.out.println("parallel-parent completed");
     }
 }
 
@@ -116,11 +118,11 @@ public class App {
         DBOS.launch();
         Javalin.create()
                 .get("/serial", ctx -> {
-                    proxy.parentSerial();
+                    proxy.serial();
                     ctx.result("Workflow executed!");
                 })
                 .get("/parallel", ctx -> {
-                    proxy.parentParallel();
+                    proxy.parallelParent();
                     ctx.result("Workflow executed!");
                 })
                 .start(8080);

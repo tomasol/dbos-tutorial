@@ -1,0 +1,9 @@
+plugins {
+}
+
+
+rootProject.name = 'myapp'
+include('app')
+
+// fork:
+// includeBuild("../dbos-transact-java")

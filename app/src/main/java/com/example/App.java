@@ -47,7 +47,6 @@ class ExampleImpl implements Example {
         Thread.sleep(sleepMillis);
         System.out.printf("Step %d creating file%n", idx);
         Path path = Path.of("file-" + idx + ".txt");
-        // must be idempotent
         Files.write(path, new byte[0]);
         System.out.printf("Step %d completed%n", idx);
         return idx;
@@ -86,15 +85,11 @@ class ExampleImpl implements Example {
                     new StartWorkflowOptions().withQueue(this.queue));
             handles.add(new AbstractMap.SimpleEntry<>(i, handle)); // Tuple (i, handle)
         }
-        System.out.println("parallel-parent submitted all parallel-child workflows: " + handles);
+        System.out.println("parallel-parent submitted all parallel-child workflows");
         for (var handle : handles) {
-            System.out.printf("Awaiting parallel-child workflows %d%n", handle.getKey());
-            try {
-                int result = handle.getValue().getResult();
-                System.out.printf("parallel-child succeeded %d==%d%n", handle.getKey(), result);
-            } catch (Exception e) {
-                System.out.println("parallel-child failed " + e);
-            }
+            System.out.printf("Awaiting parallel-child workflow %d%n", handle.getKey());
+            int result = handle.getValue().getResult();
+            System.out.printf("parallel-child succeeded %d%n", result);
         }
         System.out.println("parallel-parent completed");
     }

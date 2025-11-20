@@ -24,3 +24,7 @@ Run app
 ```sh
 gradle run
 ```
+
+When the server is running,
+http://localhost:9000/serial and http://localhost:9000/parallel endpoints
+can be used to start workflows.

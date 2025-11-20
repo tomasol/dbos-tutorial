@@ -55,15 +55,7 @@ class ExampleImpl implements Example {
     @Workflow(name = "serial")
     public void serial() throws Exception {
         System.out.println("serial started");
-        for (int i = 0; i < 10; i++) {
-            System.out.println("Persistent sleep started");
-            DBOS.sleep(Duration.ofSeconds(1));
-            System.out.println("Persistent sleep finished");
-            final int i2 = i;
-            int result = DBOS.runStep(() -> step(i2, 200 * i2), "step " + i);
-            System.out.printf("Step succeeded %d==%d%n", i, result);
-
-        }
+        Extract.serial();
         System.out.println("serial completed");
     }
 

@@ -21,11 +21,11 @@ import ch.qos.logback.classic.Logger;
 
 interface Example {
 
-    public void serial() throws Exception;
+    public int serial() throws Exception;
 
     public int childWorkflow(int i) throws Exception;
 
-    public void parallelParent() throws Exception;
+    public int parallelParent() throws Exception;
 }
 
 class ExampleImpl implements Example {
@@ -53,18 +53,21 @@ class ExampleImpl implements Example {
     }
 
     @Workflow(name = "serial")
-    public void serial() throws Exception {
+    public int serial() throws Exception {
         System.out.println("serial started");
+        int acc = 0;
         for (int i = 0; i < 10; i++) {
             System.out.println("Persistent sleep started");
             DBOS.sleep(Duration.ofSeconds(1));
             System.out.println("Persistent sleep finished");
             final int i2 = i;
             int result = DBOS.runStep(() -> step(i2, 200 * i2), "step " + i);
+            acc += result;
             System.out.printf("Step succeeded %d==%d%n", i, result);
 
         }
         System.out.println("serial completed");
+        return acc;
     }
 
     // This child workflow exists because there is no way to run steps directly in
@@ -75,7 +78,7 @@ class ExampleImpl implements Example {
     }
 
     @Workflow(name = "parallel-parent")
-    public void parallelParent() throws Exception {
+    public int parallelParent() throws Exception {
         System.out.println("parallel-parent started");
         ArrayList<Map.Entry<Integer, WorkflowHandle<Integer, Exception>>> handles = new ArrayList<>();
         for (int i = 0; i < 10; i++) {
@@ -86,12 +89,15 @@ class ExampleImpl implements Example {
             handles.add(new AbstractMap.SimpleEntry<>(i, handle)); // Tuple (i, handle)
         }
         System.out.println("parallel-parent submitted all parallel-child workflows");
+        int acc = 0;
         for (var handle : handles) {
             System.out.printf("Awaiting parallel-child workflow %d%n", handle.getKey());
             int result = handle.getValue().getResult();
+            acc += result;
             System.out.printf("parallel-child succeeded %d%n", result);
         }
         System.out.println("parallel-parent completed");
+        return acc;
     }
 }
 
@@ -114,12 +120,12 @@ public class App {
         DBOS.launch();
         Javalin.create()
                 .get("/serial", ctx -> {
-                    proxy.serial();
-                    ctx.result("Workflow executed!");
+                    int acc = proxy.serial();
+                    ctx.result("serial workflow completed: " + acc);
                 })
                 .get("/parallel", ctx -> {
-                    proxy.parallelParent();
-                    ctx.result("Workflow executed!");
+                    int acc = proxy.parallelParent();
+                    ctx.result("parallel workflow completed: " + acc);
                 })
                 .start(9000);
     }

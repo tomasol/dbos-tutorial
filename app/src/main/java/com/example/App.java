@@ -101,8 +101,7 @@ public class App {
         root.setLevel(Level.ERROR);
         DBOSConfig config = DBOSConfig.defaults("java1")
                 // .withConductorKey(System.getenv("CONDUCTOR_KEY"))
-                // .withAppVersion("test-app-version") // Allow changing the code when replaying
-                // workflows
+                .withAppVersion("test-app-version") // Allow changing the code when replaying workflows
                 .withDatabaseUrl(System.getenv("DBOS_SYSTEM_JDBC_URL"))
                 .withDbUser(System.getenv("PGUSER"))
                 .withDbPassword(System.getenv("PGPASSWORD"));

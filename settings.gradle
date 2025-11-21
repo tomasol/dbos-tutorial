@@ -6,4 +6,9 @@ rootProject.name = 'myapp'
 include('app')
 
 // fork:
-// includeBuild("../dbos-transact-java")
+// includeBuild("../dbos-transact-java") {
+//     dependencySubstitution {
+//     substitute(module("dev.dbos:transact"))
+//         .using(project(":transact"))
+//     }
+// }

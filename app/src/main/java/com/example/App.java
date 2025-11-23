@@ -84,7 +84,7 @@ class ExampleImpl implements Example {
     @Workflow(name = "parallel-parent")
     public long parallelParent() throws Exception {
         System.out.println("parallel-parent started");
-        ArrayList<Map.Entry<Integer, WorkflowHandle<Integer, Exception>>> handles = new ArrayList<>();
+        HashSet<Map.Entry<Integer, WorkflowHandle<Integer, Exception>>> handles = new HashSet<>();
         for (int i = 0; i < 10; i++) {
             final int index = i;
             var handle = DBOS.startWorkflow(

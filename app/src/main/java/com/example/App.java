@@ -3,10 +3,13 @@ package com.example;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 
 import org.slf4j.LoggerFactory;
 import dev.dbos.transact.DBOS;
@@ -25,7 +28,8 @@ interface Example {
 
     public int childWorkflow(int i) throws Exception;
 
-    public int parallelParent() throws Exception;
+    public long parallelParent() throws Exception;
+
 }
 
 class ExampleImpl implements Example {
@@ -78,23 +82,24 @@ class ExampleImpl implements Example {
     }
 
     @Workflow(name = "parallel-parent")
-    public int parallelParent() throws Exception {
+    public long parallelParent() throws Exception {
         System.out.println("parallel-parent started");
         ArrayList<Map.Entry<Integer, WorkflowHandle<Integer, Exception>>> handles = new ArrayList<>();
         for (int i = 0; i < 10; i++) {
             final int index = i;
-            WorkflowHandle<Integer, Exception> handle = DBOS.startWorkflow(
+            var handle = DBOS.startWorkflow(
                     () -> this.proxy.childWorkflow(index),
                     new StartWorkflowOptions().withQueue(this.queue));
             handles.add(new AbstractMap.SimpleEntry<>(i, handle)); // Tuple (i, handle)
         }
         System.out.println("parallel-parent submitted all parallel-child workflows");
-        int acc = 0;
-        for (var handle : handles) {
-            System.out.printf("Awaiting parallel-child workflow %d%n", handle.getKey());
-            int result = handle.getValue().getResult();
-            acc += result;
-            System.out.printf("parallel-child succeeded %d%n", result);
+        long acc = 0;
+        for (var entry : handles) {
+            int result = entry.getValue().getResult();
+            acc = 10 * acc + result; // Order-sensitive
+            int i = entry.getKey();
+            System.out.printf("parallel-child(%d)==%d, acc:%d%n", i, result, acc);
+            DBOS.sleep(Duration.ofMillis(300));
         }
         System.out.println("parallel-parent completed");
         return acc;
@@ -124,7 +129,7 @@ public class App {
                     ctx.result("serial workflow completed: " + acc);
                 })
                 .get("/parallel", ctx -> {
-                    int acc = proxy.parallelParent();
+                    long acc = proxy.parallelParent();
                     ctx.result("parallel workflow completed: " + acc);
                 })
                 .start(9000);

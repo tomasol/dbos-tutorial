@@ -67,7 +67,7 @@ class ExampleImpl implements Example {
             final int i2 = i;
             int result = DBOS.runStep(() -> step(i2, 200 * i2), "step " + i);
             acc += result;
-            System.out.printf("Step succeeded %d==%d%n", i, result);
+            System.out.printf("step(%d)=%d%n", i, result);
 
         }
         System.out.println("serial completed");
@@ -98,10 +98,10 @@ class ExampleImpl implements Example {
             int result = entry.getValue().getResult();
             acc = 10 * acc + result; // Order-sensitive
             int i = entry.getKey();
-            System.out.printf("parallel-child(%d)==%d, acc:%d%n", i, result, acc);
+            System.out.printf("parallel-child(%d)=%d, acc:%d%n", i, result, acc);
             DBOS.sleep(Duration.ofMillis(300));
         }
-        System.out.println("parallel-parent completed");
+        System.out.printf("parallel-parent completed: %d%n", acc);
         return acc;
     }
 }

@@ -30,6 +30,10 @@ interface Example {
 
     public long parallelParent() throws Exception;
 
+    public void sleepyWorkflow(int i);
+
+    public void sleepyParent(int max);
+
 }
 
 class ExampleImpl implements Example {
@@ -104,6 +108,34 @@ class ExampleImpl implements Example {
         System.out.printf("parallel-parent completed: %d%n", acc);
         return acc;
     }
+
+    @Workflow
+    public void sleepyWorkflow(int idx) {
+        System.out.printf("%d%n", idx);
+        DBOS.sleep(Duration.ofDays(1));
+        // do some logic here
+    }
+
+    @Workflow
+    public void sleepyParent(int max) {
+        var handles = new ArrayList<WorkflowHandle<Void, RuntimeException>>();
+        for (int i = 0; i < max; i++) {
+            final int index = i;
+            System.out.printf("Submitting child workflow %d%n", i);
+            var handle = DBOS.startWorkflow(
+                    () -> this.proxy.sleepyWorkflow(index),
+                    new StartWorkflowOptions().withQueue(this.queue));
+            handles.add(handle);
+        }
+        System.out.printf("Created %s child workflows%n", max);
+        int counter = 0;
+        for (var handle : handles) {
+            handle.getResult();
+            counter++;
+            System.out.printf("Collected %d child workflows%n", counter);
+        }
+        System.out.printf("Done waiting for %d child workflows%n", max);
+    }
 }
 
 public class App {
@@ -131,6 +163,9 @@ public class App {
                 .get("/parallel", ctx -> {
                     long acc = proxy.parallelParent();
                     ctx.result("parallel workflow completed: " + acc);
+                })
+                .get("/sleep", ctx -> {
+                    proxy.sleepyParent(10000);
                 })
                 .start(9000);
     }
